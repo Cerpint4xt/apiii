@@ -8,7 +8,7 @@ from flask_api.models.user import User
 
 def test_encode_access_token(user):
     access_token = user.encode_access_token()
-    assert isinstance(access_token, str)
+    assert isinstance(access_token, bytes)
 
 
 def test_decode_access_token_success(user):
@@ -26,14 +26,14 @@ def test_decode_access_token_expired(user):
     result = User.decode_access_token(access_token)
     assert not result.success
     assert result.error == "Access token expired. Please log in again."
-    
+
 
 def test_decode_access_token_invalid(user):
     access_token = user.encode_access_token()
-    split = access_token.split(str("."))
+    split = access_token.split(b".")
     payload_base64 = split[1]
     pad_len = 4 - (len(payload_base64) % 4)
-    payload_base64 += pad_len * "="
+    payload_base64 += pad_len * b"="
     payload_str = urlsafe_b64decode(payload_base64)
     payload = json.loads(payload_str)
     assert not payload["admin"]
@@ -41,7 +41,7 @@ def test_decode_access_token_invalid(user):
     payload_mod = json.dumps(payload)
     payload_mod_base64 = urlsafe_b64encode(payload_mod.encode())
     split[1] = payload_mod_base64.strip(b"=")
-    access_token_mod = str(".").join(split)
+    access_token_mod = b".".join(split)
     assert not access_token == access_token_mod
     result = User.decode_access_token(access_token_mod)
     assert not result.success
