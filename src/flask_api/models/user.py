@@ -7,6 +7,7 @@ from flask import current_app
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from flask_api import db, bcrypt
+from flask_api.models.token_blacklist import BlacklistedToken
 from flask_api.util.datetime_util import (
     utc_now,
     get_local_utcoffset,
@@ -50,10 +51,9 @@ class User(db.Model):
         hash_bytes = bcrypt.generate_password_hash(password, log_rounds)
         self.password_hash = hash_bytes.decode("utf-8")
 
-
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password_hash, password)
-       
+
     def encode_access_token(self):
         now = datetime.now(timezone.utc)
         token_age_h = current_app.config.get("TOKEN_EXPIRE_HOURS")
@@ -63,8 +63,9 @@ class User(db.Model):
             expire = now + timedelta(seconds=5)
         payload = dict(exp=expire, iat=now, sub=self.public_id, admin=self.admin)
         key = current_app.config.get("SECRET_KEY")
-        return jwt.encode(payload, key, algorithm="HS256")
-
+        token = jwt.encode(payload, key, algorithm="HS256")
+        if isinstance(token, str):
+            return token.encode("UTF-8")
 
     @staticmethod
     def decode_access_token(access_token):
@@ -81,6 +82,10 @@ class User(db.Model):
             return Result.Fail(error)
         except jwt.InvalidTokenError:
             error = "Invalid token. Please log in again."
+            return Result.Fail(error)
+
+        if BlacklistedToken.check_blacklist(access_token):
+            error = "Token blacklisted. Please log in again."
             return Result.Fail(error)
 
         user_dict = dict(
